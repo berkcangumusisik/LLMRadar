@@ -21,6 +21,10 @@ engine = create_async_engine(
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,
+    connect_args={
+        "server_settings": {"statement_timeout": "120000"},
+        "command_timeout": 120,
+    },
 )
 
 async_session_factory = async_sessionmaker(

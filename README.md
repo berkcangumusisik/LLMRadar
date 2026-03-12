@@ -8,17 +8,20 @@
 
 ## Nedir?
 
-LLMRadar, GPT, Claude, Gemini, Llama, DeepSeek gibi büyük dil modelleri hakkındaki haberleri **5 farklı kaynaktan** otomatik olarak çeken, **Google Gemini Flash** ile analiz edip etiketleyen, Türkçe ve İngilizce özetleyen, **WebSocket** ile canlı yayınlayan ve **pgvector** ile ilişkili haberleri bulan bir platformdur.
+LLMRadar, GPT, Claude, Gemini, Llama, DeepSeek gibi büyük dil modelleri hakkındaki haberleri **9 farklı kaynaktan** otomatik olarak çeken, **Google Gemini 2.5 Flash** ile analiz edip etiketleyen, Türkçe ve İngilizce özetleyen, **WebSocket** ile canlı yayınlayan ve **pgvector** ile ilişkili haberleri bulan bir platformdur.
 
 ## Öne Çıkan Özellikler
 
-- **Çoklu Kaynak Toplama** — arXiv, Hacker News, Hugging Face, resmi AI blogları (OpenAI, Anthropic, Google, Meta) ve X (Twitter) hesapları
-- **Akıllı Etiketleme** — Gemini Flash ile kategori etiketleri, model etiketleri, önem skoru (1-10) ve anahtar metrik çıkarımı
+- **Çoklu Kaynak Toplama** — arXiv, Hacker News, Hugging Face, Google AI Blog, Reddit, Papers With Code, Dev.to, GitHub Trending, Semantic Scholar, TechCrunch, The Verge, VentureBeat, Ars Technica
+- **Akıllı Etiketleme** — Gemini 2.5 Flash ile kategori etiketleri, model etiketleri, önem skoru (1-10) ve anahtar metrik çıkarımı
 - **İki Dilli Özet** — Her haber için 2 cümlelik Türkçe ve İngilizce özet
 - **Gerçek Zamanlı Akış** — Supabase Realtime + WebSocket ile anında haber bildirimi
 - **Semantik Arama** — pgvector ile cosine similarity tabanlı ilişkili haber bulma
 - **İki Dilli Arayüz** — Tüm UI Türkçe/İngilizce, tek tıkla geçiş
 - **Atomic Design** — Atoms → Molecules → Organisms → Templates mimarisi
+- **Circuit Breaker** — Gemini API kotası dolduğunda akıllı fallback + otomatik retry
+- **Akıllı Fallback** — Gemini ulaşılamazsa bile keyword-based etiketleme, metrik çıkarımı ve içerikten özet üretimi
+- **Tarih Filtresi** — Geçmiş haberler yerine sadece güncel haberler çekilir
 
 ## Teknik Yığın
 
@@ -30,7 +33,7 @@ LLMRadar, GPT, Claude, Gemini, Llama, DeepSeek gibi büyük dil modelleri hakkı
 | SQLAlchemy 2.0 (async) | ORM — asyncpg driver |
 | APScheduler | Zamanlanmış haber çekme |
 | supabase-py | Supabase client + Realtime dinleme |
-| google-generativeai | Gemini Flash ile haber analizi |
+| google-generativeai | Gemini 2.5 Flash ile haber analizi |
 | sentence-transformers | all-MiniLM-L6-v2 ile 384-dim embedding |
 
 ### Frontend
@@ -56,8 +59,10 @@ LLMRadar, GPT, Claude, Gemini, Llama, DeepSeek gibi büyük dil modelleri hakkı
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │  Kaynaklar  │────▶│   Backend    │────▶│  Supabase   │
 │ arXiv, HN,  │     │  FastAPI     │     │ PostgreSQL  │
-│ HF, Blogs,  │     │  + Gemini    │     │ + pgvector  │
-│ X (RSSHub)  │     │  + Embedder  │     │ + Realtime  │
+│ HF, Reddit, │     │  + Gemini    │     │ + pgvector  │
+│ PwC, DevTo, │     │  + Embedder  │     │ + Realtime  │
+│ GitHub, SS, │     │  + Circuit   │     │             │
+│ Blogs (5)   │     │    Breaker   │     │             │
 └─────────────┘     └──────┬───────┘     └──────┬──────┘
                            │                     │
                     WebSocket push        Realtime INSERT
@@ -87,22 +92,23 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- articles tablosu
 CREATE TABLE articles (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  title           text NOT NULL,
-  content         text NOT NULL,
-  url             text UNIQUE NOT NULL,
-  source          text NOT NULL,
-  author          text,
-  category_tags   text[] NOT NULL DEFAULT '{}',
-  model_tags      text[] NOT NULL DEFAULT '{}',
-  summary_en      text,
-  summary_tr      text,
-  importance      integer NOT NULL DEFAULT 5,
-  key_metric      text,
-  is_llm_related  boolean NOT NULL DEFAULT true,
-  embedding       vector(384),
-  published_at    timestamptz NOT NULL,
-  created_at      timestamptz NOT NULL DEFAULT now()
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title             text NOT NULL,
+  content           text NOT NULL,
+  url               text UNIQUE NOT NULL,
+  source            text NOT NULL,
+  author            text,
+  category_tags     text[] NOT NULL DEFAULT '{}',
+  model_tags        text[] NOT NULL DEFAULT '{}',
+  summary_en        text,
+  summary_tr        text,
+  importance        integer NOT NULL DEFAULT 5,
+  key_metric        text,
+  is_llm_related    boolean NOT NULL DEFAULT true,
+  needs_reanalysis  boolean NOT NULL DEFAULT false,
+  embedding         vector(384),
+  published_at      timestamptz NOT NULL,
+  created_at        timestamptz NOT NULL DEFAULT now()
 );
 
 -- İndeksler
@@ -227,13 +233,21 @@ llmradar/
 
 ## Haber Kaynakları & Çekme Sıklığı
 
-| Kaynak | Aralık | Açıklama |
-|---|---|---|
-| arXiv | 60 dk | cs.AI, cs.CL, cs.LG kategorileri |
-| Hacker News | 15 dk | LLM keyword filtreli son haberler |
-| Hugging Face | 30 dk | Daily papers + trending repos |
-| Resmi Bloglar | 30 dk | OpenAI, Anthropic, Google AI, Meta AI |
-| X (RSSHub) | 20 dk | 18 AI lider/kuruluş hesabı |
+| Kaynak | Aralık | Filtre | Açıklama |
+|---|---|---|---|
+| arXiv | 60 dk | Son 48 saat | cs.AI, cs.CL, cs.LG kategorileri |
+| Hacker News | 15 dk | Son 24 saat | LLM keyword filtreli son haberler |
+| Hugging Face | 30 dk | Son 48 saat | Daily papers + trending repos |
+| Google AI Blog | 30 dk | Son 7 gün | Resmi Google AI blog RSS'i |
+| Reddit | 20 dk | Son 24 saat | r/MachineLearning, r/LocalLLaMA, r/artificial |
+| Papers With Code | 60 dk | Son 48 saat | En yeni ML makaleleri + kod linkleri |
+| Dev.to | 30 dk | Son 48 saat | AI/ML/LLM etiketli yazılar |
+| GitHub Trending | 60 dk | Günlük | AI/ML ile ilgili trend repolar |
+| Semantic Scholar | 60 dk | Son 7 gün | Akademik LLM makaleleri |
+| TechCrunch AI | 30 dk | Son 7 gün | AI sektör haberleri (RSS) |
+| The Verge AI | 30 dk | Son 7 gün | Popüler AI haberleri (RSS) |
+| VentureBeat AI | 30 dk | Son 7 gün | Enterprise AI haberleri (RSS) |
+| Ars Technica | 30 dk | Son 7 gün | Teknik AI haberleri (RSS) |
 
 ## API Endpoint'leri
 
@@ -254,7 +268,7 @@ llmradar/
 |---|---|
 | `SUPABASE_URL` | Supabase proje URL'i |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role anahtarı (tam yetki) |
-| `DATABASE_URL` | PostgreSQL bağlantı dizesi |
+| `DATABASE_URL` | PostgreSQL bağlantı dizesi (pooler önerilir) |
 | `GEMINI_API_KEY` | Google AI Studio API anahtarı |
 
 ### Frontend (`frontend/.env.local`)

@@ -41,6 +41,7 @@ class Article(Base):
     importance: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("5"))
     key_metric: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_llm_related: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    needs_reanalysis: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     embedding = mapped_column(Vector(384), nullable=True)
 

@@ -2,23 +2,26 @@
 
 > A real-time, AI-powered news aggregation platform for tracking large language model developments.
 
-[Türkçe dokümantasyon →](./README.md)
+[Turkce dokumantasyon →](./README.md)
 
 ---
 
 ## What is it?
 
-LLMRadar automatically collects news about large language models — GPT, Claude, Gemini, Llama, DeepSeek and more — from **5 different sources**, analyzes and tags them using **Google Gemini Flash**, generates bilingual (TR/EN) summaries, streams updates in real-time via **WebSocket**, and finds related articles using **pgvector** cosine similarity search.
+LLMRadar automatically collects news about large language models — GPT, Claude, Gemini, Llama, DeepSeek and more — from **9 different sources**, analyzes and tags them using **Google Gemini 2.5 Flash**, generates bilingual (TR/EN) summaries, streams updates in real-time via **WebSocket**, and finds related articles using **pgvector** cosine similarity search.
 
 ## Key Features
 
-- **Multi-Source Ingestion** — arXiv, Hacker News, Hugging Face, official AI blogs (OpenAI, Anthropic, Google, Meta), and X (Twitter) accounts
-- **Smart Tagging** — Gemini Flash assigns category tags, model tags, importance scores (1-10), and key metrics
+- **Multi-Source Ingestion** — arXiv, Hacker News, Hugging Face, Google AI Blog, Reddit, Papers With Code, Dev.to, GitHub Trending, Semantic Scholar, TechCrunch, The Verge, VentureBeat, Ars Technica
+- **Smart Tagging** — Gemini 2.5 Flash assigns category tags, model tags, importance scores (1-10), and key metrics
 - **Bilingual Summaries** — 2-sentence Turkish and English summaries for every article
 - **Real-Time Streaming** — Instant push notifications via Supabase Realtime + WebSocket
 - **Semantic Search** — pgvector cosine similarity for related article discovery
 - **Bilingual UI** — Full Turkish/English interface with one-click toggle
 - **Atomic Design** — Atoms → Molecules → Organisms → Templates architecture
+- **Circuit Breaker** — Smart fallback when Gemini API quota is exhausted + automatic retry
+- **Smart Fallback** — Keyword-based tagging, metric extraction, and content-derived summaries when Gemini is unavailable
+- **Date Filtering** — Only fetches recent news, never stale historical content
 
 ## Tech Stack
 
@@ -30,7 +33,7 @@ LLMRadar automatically collects news about large language models — GPT, Claude
 | SQLAlchemy 2.0 (async) | ORM with asyncpg driver |
 | APScheduler | Scheduled news ingestion |
 | supabase-py | Supabase client + Realtime listener |
-| google-generativeai | Gemini Flash for article analysis |
+| google-generativeai | Gemini 2.5 Flash for article analysis |
 | sentence-transformers | all-MiniLM-L6-v2 for 384-dim embeddings |
 
 ### Frontend
@@ -56,8 +59,10 @@ LLMRadar automatically collects news about large language models — GPT, Claude
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │   Sources   │────▶│   Backend    │────▶│  Supabase   │
 │ arXiv, HN,  │     │  FastAPI     │     │ PostgreSQL  │
-│ HF, Blogs,  │     │  + Gemini    │     │ + pgvector  │
-│ X (RSSHub)  │     │  + Embedder  │     │ + Realtime  │
+│ HF, Reddit, │     │  + Gemini    │     │ + pgvector  │
+│ PwC, DevTo, │     │  + Embedder  │     │ + Realtime  │
+│ GitHub, SS, │     │  + Circuit   │     │             │
+│ Blogs (5)   │     │    Breaker   │     │             │
 └─────────────┘     └──────┬───────┘     └──────┬──────┘
                            │                     │
                     WebSocket push        Realtime INSERT
@@ -87,22 +92,23 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Articles table
 CREATE TABLE articles (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  title           text NOT NULL,
-  content         text NOT NULL,
-  url             text UNIQUE NOT NULL,
-  source          text NOT NULL,
-  author          text,
-  category_tags   text[] NOT NULL DEFAULT '{}',
-  model_tags      text[] NOT NULL DEFAULT '{}',
-  summary_en      text,
-  summary_tr      text,
-  importance      integer NOT NULL DEFAULT 5,
-  key_metric      text,
-  is_llm_related  boolean NOT NULL DEFAULT true,
-  embedding       vector(384),
-  published_at    timestamptz NOT NULL,
-  created_at      timestamptz NOT NULL DEFAULT now()
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title             text NOT NULL,
+  content           text NOT NULL,
+  url               text UNIQUE NOT NULL,
+  source            text NOT NULL,
+  author            text,
+  category_tags     text[] NOT NULL DEFAULT '{}',
+  model_tags        text[] NOT NULL DEFAULT '{}',
+  summary_en        text,
+  summary_tr        text,
+  importance        integer NOT NULL DEFAULT 5,
+  key_metric        text,
+  is_llm_related    boolean NOT NULL DEFAULT true,
+  needs_reanalysis  boolean NOT NULL DEFAULT false,
+  embedding         vector(384),
+  published_at      timestamptz NOT NULL,
+  created_at        timestamptz NOT NULL DEFAULT now()
 );
 
 -- Indexes
@@ -227,13 +233,21 @@ llmradar/
 
 ## News Sources & Intervals
 
-| Source | Interval | Description |
-|---|---|---|
-| arXiv | 60 min | cs.AI, cs.CL, cs.LG categories |
-| Hacker News | 15 min | LLM keyword-filtered recent stories |
-| Hugging Face | 30 min | Daily papers + trending repos |
-| Official Blogs | 30 min | OpenAI, Anthropic, Google AI, Meta AI |
-| X (RSSHub) | 20 min | 18 AI leader/organization accounts |
+| Source | Interval | Filter | Description |
+|---|---|---|---|
+| arXiv | 60 min | Last 48h | cs.AI, cs.CL, cs.LG categories |
+| Hacker News | 15 min | Last 24h | LLM keyword-filtered recent stories |
+| Hugging Face | 30 min | Last 48h | Daily papers + trending repos |
+| Google AI Blog | 30 min | Last 7 days | Official Google AI blog RSS |
+| Reddit | 20 min | Last 24h | r/MachineLearning, r/LocalLLaMA, r/artificial |
+| Papers With Code | 60 min | Last 48h | Latest ML papers with code links |
+| Dev.to | 30 min | Last 48h | AI/ML/LLM tagged articles |
+| GitHub Trending | 60 min | Daily | AI/ML related trending repos |
+| Semantic Scholar | 60 min | Last 7 days | Academic LLM papers |
+| TechCrunch AI | 30 min | Last 7 days | AI industry news (RSS) |
+| The Verge AI | 30 min | Last 7 days | Popular AI news (RSS) |
+| VentureBeat AI | 30 min | Last 7 days | Enterprise AI news (RSS) |
+| Ars Technica | 30 min | Last 7 days | Technical AI news (RSS) |
 
 ## API Endpoints
 
@@ -254,7 +268,7 @@ llmradar/
 |---|---|
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (full access) |
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | PostgreSQL connection string (pooler recommended) |
 | `GEMINI_API_KEY` | Google AI Studio API key |
 
 ### Frontend (`frontend/.env.local`)

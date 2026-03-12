@@ -5,7 +5,7 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
 }
 
-export function IconButton({ children, label, className = "", ...rest }: IconButtonProps) {
+export function IconButton({ children, label, className = "", "as-child": _asChild, ...rest }: IconButtonProps & { "as-child"?: unknown }) {
   return (
     <button
       aria-label={label}

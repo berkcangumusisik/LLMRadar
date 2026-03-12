@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import xml.etree.ElementTree as ET
 
-from app.ingestion.sources.base import BaseSource
+from app.ingestion.sources.base import BaseSource, logger
 from app.models.schemas import RawArticle
 
 ARXIV_API = "http://export.arxiv.org/api/query"
@@ -85,6 +85,10 @@ class ArxivSource(BaseSource):
             if not title or not link:
                 continue
 
+            cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)
+            if published_at < cutoff:
+                continue
+
             articles.append(
                 RawArticle(
                     title=title,
@@ -96,4 +100,5 @@ class ArxivSource(BaseSource):
                 )
             )
 
+        logger.info("arxiv: %d articles after 48h filter", len(articles))
         return articles

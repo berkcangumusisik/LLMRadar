@@ -24,10 +24,18 @@ export const SOURCE_LABELS: Record<string, string> = {
   arxiv: "arXiv",
   hackernews: "Hacker News",
   huggingface: "Hugging Face",
-  blog_openai: "OpenAI Blog",
-  blog_anthropic: "Anthropic Blog",
   blog_google_ai: "Google AI Blog",
-  blog_meta_ai: "Meta AI Blog",
+  blog_techcrunch_ai: "TechCrunch AI",
+  blog_theverge_ai: "The Verge AI",
+  blog_venturebeat_ai: "VentureBeat AI",
+  blog_arstechnica: "Ars Technica",
+  reddit_MachineLearning: "r/MachineLearning",
+  reddit_LocalLLaMA: "r/LocalLLaMA",
+  reddit_artificial: "r/artificial",
+  paperswithcode: "Papers With Code",
+  devto: "Dev.to",
+  github_trending: "GitHub Trending",
+  semanticscholar: "Semantic Scholar",
 };
 
 export const SKELETON_COUNT = 12;

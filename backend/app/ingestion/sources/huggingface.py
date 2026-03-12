@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from app.ingestion.sources.base import BaseSource
+from app.ingestion.sources.base import BaseSource, logger
 from app.models.schemas import RawArticle
 
 HF_PAPERS_API = "https://huggingface.co/api/daily_papers"
@@ -42,6 +42,10 @@ class HuggingFaceSource(BaseSource):
 
             published_raw = paper.get("publishedAt") or item.get("publishedAt", "")
             published_at = self._parse_date(published_raw)
+
+            cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)
+            if published_at < cutoff:
+                continue
 
             authors: list[str] = []
             for a in paper.get("authors", []):

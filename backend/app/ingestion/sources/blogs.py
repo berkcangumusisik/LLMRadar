@@ -3,18 +3,31 @@ from __future__ import annotations
 import datetime
 import xml.etree.ElementTree as ET
 
-from app.ingestion.sources.base import BaseSource
+from app.ingestion.sources.base import BaseSource, logger
 from app.models.schemas import RawArticle
 
 RSS_FEEDS: dict[str, str] = {
-    "openai": "https://openai.com/blog/rss",
-    "anthropic": "https://anthropic.com/news/rss",
     "google_ai": "https://blog.google/technology/ai/rss/",
-    "meta_ai": "https://ai.meta.com/blog/rss/",
+    "techcrunch_ai": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "theverge_ai": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "venturebeat_ai": "https://feeds.feedburner.com/venturebeat/SZYF",
+    "arstechnica": "https://feeds.arstechnica.com/arstechnica/technology-lab",
 }
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 DC_NS = "{http://purl.org/dc/elements/1.1/}"
+
+AI_KEYWORDS = [
+    "ai", "llm", "gpt", "claude", "gemini", "llama", "mistral", "deepseek",
+    "openai", "anthropic", "transformer", "language model", "machine learning",
+    "neural", "deep learning", "chatbot", "artificial intelligence",
+    "multimodal", "agent", "reasoning", "benchmark",
+]
+
+
+def _is_ai_relevant(title: str, content: str) -> bool:
+    combined = f"{title} {content}".lower()
+    return any(kw in combined for kw in AI_KEYWORDS)
 
 
 class BlogsSource(BaseSource):
@@ -29,7 +42,6 @@ class BlogsSource(BaseSource):
                 items = await self._parse_feed(blog_name, feed_url)
                 articles.extend(items)
             except Exception as exc:
-                from app.ingestion.sources.base import logger
                 logger.warning("blogs/%s failed: %s", blog_name, exc)
 
         return articles
@@ -41,18 +53,17 @@ class BlogsSource(BaseSource):
 
         articles: list[RawArticle] = []
 
-        # RSS 2.0 format
         for item in root.findall(".//item"):
             article = self._parse_rss_item(item, blog_name)
             if article:
                 articles.append(article)
 
-        # Atom format
         for entry in root.findall(f"{ATOM_NS}entry"):
             article = self._parse_atom_entry(entry, blog_name)
             if article:
                 articles.append(article)
 
+        logger.info("blogs/%s: %d articles", blog_name, len(articles))
         return articles
 
     def _parse_rss_item(self, item: ET.Element, blog_name: str) -> RawArticle | None:
@@ -66,15 +77,25 @@ class BlogsSource(BaseSource):
         if not title or not link:
             return None
 
+        published_at = self._parse_rss_date(pub_date)
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
+        if published_at < cutoff:
+            return None
+
         content = content_encoded or description or title
+        clean_content = self._strip_html(content)[:3000]
+
+        needs_filter = blog_name in ("venturebeat_ai", "arstechnica")
+        if needs_filter and not _is_ai_relevant(title, clean_content):
+            return None
 
         return RawArticle(
             title=title,
-            content=self._strip_html(content)[:3000],
+            content=clean_content,
             url=link,
             source=f"blog_{blog_name}",
             author=author or None,
-            published_at=self._parse_rss_date(pub_date),
+            published_at=published_at,
         )
 
     def _parse_atom_entry(self, entry: ET.Element, blog_name: str) -> RawArticle | None:
@@ -111,13 +132,24 @@ class BlogsSource(BaseSource):
         if not title or not link:
             return None
 
+        published_at = self._parse_iso_date(updated)
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
+        if published_at < cutoff:
+            return None
+
+        clean_content = self._strip_html(content or title)[:3000]
+
+        needs_filter = blog_name in ("venturebeat_ai", "arstechnica")
+        if needs_filter and not _is_ai_relevant(title, clean_content):
+            return None
+
         return RawArticle(
             title=title,
-            content=self._strip_html(content or title)[:3000],
+            content=clean_content,
             url=link,
             source=f"blog_{blog_name}",
             author=author or None,
-            published_at=self._parse_iso_date(updated),
+            published_at=published_at,
         )
 
     @staticmethod

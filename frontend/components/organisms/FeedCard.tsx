@@ -64,10 +64,14 @@ export function FeedCard({ article, onRelatedClick }: FeedCardProps) {
           >
             <Link2 size={15} />
           </IconButton>
-          <a href={article.url} target="_blank" rel="noopener noreferrer">
-            <IconButton label={t("card.openOriginal")} as-child>
-              <ExternalLink size={15} />
-            </IconButton>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t("card.openOriginal")}
+            className="inline-flex items-center justify-center rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            <ExternalLink size={15} />
           </a>
         </div>
       </div>

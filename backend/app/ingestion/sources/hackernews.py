@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 
-from app.ingestion.sources.base import BaseSource
+from app.ingestion.sources.base import BaseSource, logger
 from app.models.schemas import RawArticle
 
 HN_TOP = "https://hacker-news.firebaseio.com/v0/newstories.json"
@@ -60,13 +60,16 @@ class HackerNewsSource(BaseSource):
             if not _is_relevant(title, text):
                 continue
 
-            if not url:
-                url = f"https://news.ycombinator.com/item?id={item['id']}"
-
             published_at = datetime.datetime.fromtimestamp(
                 item.get("time", 0),
                 tz=datetime.timezone.utc,
             )
+            cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+            if published_at < cutoff:
+                continue
+
+            if not url:
+                url = f"https://news.ycombinator.com/item?id={item['id']}"
 
             content = text if text else title
             author = item.get("by")

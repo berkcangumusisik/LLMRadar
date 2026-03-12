@@ -1,9 +1,12 @@
 import {
   BookOpen,
+  Code,
+  FileText,
+  Github,
   Globe,
+  GraduationCap,
   MessageSquare,
   Newspaper,
-  Twitter,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -16,11 +19,15 @@ const iconMap: Record<string, ComponentType<{ size?: number; className?: string 
   arxiv: BookOpen,
   hackernews: MessageSquare,
   huggingface: Globe,
+  paperswithcode: FileText,
+  devto: Code,
+  github_trending: Github,
+  semanticscholar: GraduationCap,
 };
 
 export function SourceIcon({ source, size = 16 }: SourceIconProps) {
-  if (source.startsWith("x_")) {
-    return <Twitter size={size} className="text-zinc-400" />;
+  if (source.startsWith("reddit_")) {
+    return <MessageSquare size={size} className="text-orange-400" />;
   }
   if (source.startsWith("blog_")) {
     return <Newspaper size={size} className="text-zinc-400" />;
