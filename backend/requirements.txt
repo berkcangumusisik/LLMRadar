@@ -1,0 +1,13 @@
+fastapi[standard]
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+pgvector
+pydantic-settings
+httpx
+apscheduler
+supabase
+google-generativeai
+sentence-transformers
+numpy
+python-dotenv
